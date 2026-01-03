@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract BikeRental {
+    address public owner;
+    uint256 public rentalPrice; // 單次租借費用
+    uint256 public deposit;     // 押金
+    
+    mapping(address => bool) public users;
+    mapping(uint256 => Rental) public rentals;
+
+    struct Rental {
+        address renter;
+        uint256 startTime;
+        bool isRented; 
+    }
+
+    event UserRegistered(address user);
+    event BikeRented(uint256 bikeId, address renter);
+    event BikeReturned(uint256 bikeId, address renter, uint256 refundAmount);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner");
+        _;
+    }
+
+    modifier onlyRegisteredUser() {
+        require(users[msg.sender], "Please register first");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+        rentalPrice = 0.001 ether; 
+        deposit = 0.005 ether; 
+    }
+
+    function registerUser() external {
+        require(!users[msg.sender], "Already registered");
+        users[msg.sender] = true;
+        emit UserRegistered(msg.sender);
+    }
+
+    function rentBike(uint256 _bikeID) external payable onlyRegisteredUser {
+        require(msg.value == rentalPrice + deposit, "Incorrect ETH amount");
+        require(!rentals[_bikeID].isRented, "Bike is already rented");
+
+        rentals[_bikeID] = Rental({
+            renter: msg.sender,
+            startTime: block.timestamp,
+            isRented: true
+        });
+
+        emit BikeRented(_bikeID, msg.sender);
+    }
+
+    // 修正後的還車函數
+    function returnBike(uint256 _bikeID) external {
+        Rental storage rental = rentals[_bikeID];
+        
+        require(rental.isRented, "Bike is not rented");
+        require(rental.renter == msg.sender, "You are not the renter");
+
+        // 先更新狀態 (防止重入攻擊)
+        rental.isRented = false;
+        rental.renter = address(0);
+
+        // 1. 轉租金給老闆
+        (bool successOwner, ) = owner.call{value: rentalPrice}("");
+        require(successOwner, "Transfer to owner failed");
+        
+        // 2. 退押金給使用者
+        (bool successRefund, ) = msg.sender.call{value: deposit}("");
+        require(successRefund, "Refund to user failed");
+
+        emit BikeReturned(_bikeID, msg.sender, deposit);
+    }
+
+    function getBikeStatus(uint256 _bikeID) external view returns (bool, address) {
+        return (rentals[_bikeID].isRented, rentals[_bikeID].renter);
+    }
+}
