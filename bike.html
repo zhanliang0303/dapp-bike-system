@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>去中心化單車租賃系統</title>
+
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer">
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
+      background: #0b0f14;
+      color: #e8eef7;
+    }
+    .wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .panel {
+      max-width: 600px;
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+      text-align: center;
+    }
+    h1 { margin-top: 0; margin-bottom: 8px; color: #fff; }
+    .subtitle { color: #8b9bb4; font-size: 14px; margin-bottom: 24px; }
+    
+    .status-card {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .status-item { margin: 8px 0; font-size: 14px; display: flex; justify-content: space-between; }
+    .status-label { color: #8b9bb4; }
+    .status-value { font-family: monospace; color: #e8eef7; font-weight: bold; }
+    
+    .bike-display {
+      margin: 24px 0;
+      padding: 20px;
+      background: rgba(120, 180, 255, 0.05);
+      border-radius: 50%;
+      width: 80px;
+      height: 80px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      border: 2px solid rgba(120, 180, 255, 0.3);
+      transition: 0.3s;
+    }
+    .bike-active { background: rgba(46, 204, 113, 0.2); border-color: #2ecc71; box-shadow: 0 0 20px rgba(46,204,113,0.4); }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-connect { background: #f6851b; color: white; }
+    .btn-register { background: #3498db; color: white; }
+    .btn-rent { background: linear-gradient(135deg, #007bff, #0056b3); color: white; }
+    .btn-return { background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; }
+    
+    button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      filter: grayscale(100%);
+    }
+    button:active { transform: scale(0.98); }
+
+    .loader { font-size: 12px; color: #f1c40f; margin-top: 10px; min-height: 18px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>🚲 區塊鏈單車租賃系統</h1>
+      <div class="subtitle">基於智能合約的自動化押金退還機制</div>
+
+      <div class="status-card">
+        <div class="status-item">
+          <span class="status-label">目前帳號</span>
+          <span class="status-value" id="userAddr">未連接</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">用戶狀態</span>
+          <span class="status-value" id="regStatus">Checking...</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">租賃費率</span>
+          <span class="status-value" style="color: #ff7675;">0.001 ETH</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">所需押金</span>
+          <span class="status-value" style="color: #55efc4;">0.005 ETH (自動退還)</span>
+        </div>
+      </div>
+
+      <div id="bikeIcon" class="bike-display">🚲</div>
+      <div id="bikeStatusText" style="margin-bottom: 20px; font-size: 14px; color: #8b9bb4;">單車狀態: 讀取中...</div>
+
+      <button id="btnConnect" class="btn-connect" onclick="init()">🦊 連接錢包</button>
+      <button id="btnRegister" class="btn-register" onclick="registerUser()" disabled>📝 註冊會員</button>
+      <button id="btnRent" class="btn-rent" onclick="rentBike()" disabled>🔓 租借單車 (0.006 ETH)</button>
+      <button id="btnReturn" class="btn-return" onclick="returnBike()" style="display:none;">🏁 還車並取回押金</button>
+
+      <div class="loader" id="output"></div>
+    </div>
+  </div>
+
+<script>
+  // =============================
+  // 1. 設定區 (請換成你的合約地址)
+  // =============================
+  const contractAddress = "0x802FB54BE053c9e799F6f37F7A4C3529CC22a296"; 
+
+  const abi = [
+    "function registerUser() external",
+    "function rentBike(uint256 _bikeID) external payable",
+    "function returnBike(uint256 _bikeID) external",
+    "function users(address) view returns (bool)",
+    "function getBikeStatus(uint256 _bikeID) view returns (bool, address)"
+  ];
+
+  // =============================
+  // 2. 全域變數
+  // =============================
+  let provider, signer, contract, currentAccount;
+
+  // =============================
+  // 3. 初始化功能
+  // =============================
+  async function init() {
+    if (!window.ethereum) {
+      alert("請安裝 MetaMask 擴充套件");
+      return;
+    }
+
+    try {
+      // 連接 Provider
+      provider = new ethers.providers.Web3Provider(window.ethereum);
+      
+      // 請求帳號權限
+      await provider.send("eth_requestAccounts", []);
+      const network = await provider.getNetwork();
+
+      // 檢查是否為 Sepolia 測試網 (Chain ID: 11155111)
+      if (network.chainId !== 11155111) {
+        alert("⚠️ 請切換至 Sepolia 測試網路！");
+        return;
+      }
+
+      signer = provider.getSigner();
+      currentAccount = await signer.getAddress();
+      
+      // 初始化合約
+      contract = new ethers.Contract(contractAddress, abi, signer);
+
+      // 更新介面
+      updateUI_Connected();
+      
+      // 讀取鏈上狀態
+      await refreshData();
+
+      // 監聽帳號切換
+      window.ethereum.on('accountsChanged', () => window.location.reload());
+
+    } catch (e) {
+      console.error(e);
+      document.getElementById("output").innerText = "❌ 連線失敗: " + e.message;
+    }
+  }
+
+  function updateUI_Connected() {
+    const shortAddr = currentAccount.substring(0, 6) + "..." + currentAccount.substring(38);
+    document.getElementById("userAddr").innerText = shortAddr;
+    document.getElementById("btnConnect").innerText = "✅ 已連接";
+    document.getElementById("btnConnect").disabled = true;
+    document.getElementById("btnConnect").style.opacity = "0.5";
+  }
+
+  // =============================
+  // 4. 讀取狀態邏輯 (Core Logic)
+  // =============================
+  async function refreshData() {
+    try {
+      // 1. 檢查使用者是否註冊
+      const isRegistered = await contract.users(currentAccount);
+      document.getElementById("regStatus").innerText = isRegistered ? "✅ 已註冊會員" : "❌ 未註冊";
+      document.getElementById("regStatus").style.color = isRegistered ? "#2ecc71" : "#e74c3c";
+
+      // 2. 控制按鈕狀態
+      if (!isRegistered) {
+        document.getElementById("btnRegister").disabled = false;
+        document.getElementById("btnRent").disabled = true;
+      } else {
+        document.getElementById("btnRegister").disabled = true;
+        document.getElementById("btnRegister").innerText = "已成為會員";
+        document.getElementById("btnRent").disabled = false; // 先打開，後面再依車況判斷
+      }
+
+      // 3. 檢查單車 (ID: 1) 狀態
+      const [isRented, renter] = await contract.getBikeStatus(1);
+      
+      const bikeIcon = document.getElementById("bikeIcon");
+      const statusText = document.getElementById("btnRent");
+      const returnBtn = document.getElementById("btnReturn");
+
+      if (isRented) {
+        // 如果被租走了
+        if (renter.toLowerCase() === currentAccount.toLowerCase()) {
+          // 是我租的 -> 顯示還車鈕
+          bikeIcon.classList.add("bike-active");
+          bikeIcon.innerText = "🚴💨";
+          document.getElementById("bikeStatusText").innerText = "租借計時中...";
+          document.getElementById("bikeStatusText").style.color = "#2ecc71";
+          
+          statusText.style.display = "none";
+          returnBtn.style.display = "inline-block";
+        } else {
+          // 別人租的 -> 鎖定按鈕
+          bikeIcon.innerText = "🔒";
+          document.getElementById("bikeStatusText").innerText = "此車已被他人租借";
+          statusText.style.display = "inline-block";
+          statusText.disabled = true;
+          statusText.innerText = "🚫 單車使用中";
+          returnBtn.style.display = "none";
+        }
+      } else {
+        // 閒置中
+        bikeIcon.classList.remove("bike-active");
+        bikeIcon.innerText = "🚲";
+        document.getElementById("bikeStatusText").innerText = "閒置中，可租借";
+        document.getElementById("bikeStatusText").style.color = "#8b9bb4";
+
+        returnBtn.style.display = "none";
+        statusText.style.display = "inline-block";
+        // 如果已註冊，就開放租借
+        if (isRegistered) {
+            statusText.disabled = false;
+            statusText.innerText = "🔓 租借單車 (0.006 ETH)";
+        }
+      }
+
+    } catch (e) {
+      console.error(e);
+      document.getElementById("output").innerText = "⚠️ 讀取合約狀態失敗 (請檢查合約地址)";
+    }
+  }
+
+  // =============================
+  // 5. 交易功能 (Actions)
+  // =============================
+  
+  // 註冊
+  async function registerUser() {
+    try {
+      showLoading("交易確認中，請在錢包簽名...");
+      const tx = await contract.registerUser();
+      showLoading("⏳ 註冊上鏈中...");
+      await tx.wait();
+      showLoading("");
+      alert("🎉 註冊成功！");
+      refreshData();
+    } catch (e) {
+      console.error(e);
+      showLoading("❌ 交易取消或失敗");
+    }
+  }
+
+  // 租車
+  async function rentBike() {
+    try {
+      showLoading("準備支付租金與押金...");
+      // 0.006 ETH = 0.001 租金 + 0.005 押金
+      const price = ethers.utils.parseEther("0.006"); 
+      const tx = await contract.rentBike(1, { value: price });
+      
+      showLoading("⏳ 區塊確認中 (開鎖指令)...");
+      await tx.wait();
+      
+      showLoading("");
+      refreshData(); // 重新整理介面
+    } catch (e) {
+      console.error(e);
+      showLoading("❌ 租借失敗");
+    }
+  }
+
+  // 還車
+  async function returnBike() {
+    try {
+      showLoading("正在結算並退還押金...");
+      const tx = await contract.returnBike(1);
+      
+      showLoading("⏳ 等待押金退回...");
+      await tx.wait();
+      
+      showLoading("");
+      alert("✅ 還車成功！押金 0.005 ETH 已退回您的錢包。");
+      refreshData();
+    } catch (e) {
+      console.error(e);
+      showLoading("❌ 還車失敗");
+    }
+  }
+
+  function showLoading(msg) {
+    document.getElementById("output").innerText = msg;
+  }
+
+</script>
+</body>
+</html>
