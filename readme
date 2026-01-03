@@ -1,0 +1,51 @@
+# 🚲 Blockchain Bike Rental System (區塊鏈單車租賃系統)
+
+A decentralized application (DApp) built on the **Sepolia Testnet**. Users can rent bicycles using ETH, and the system automatically refunds the deposit upon return via Smart Contracts.
+
+這是一個基於 **Sepolia 測試鏈** 的去中心化應用程式。使用者可以使用 ETH 租借單車，還車時系統會透過智能合約自動退還押金。
+
+## 🚀 Features (功能特色)
+* **Connect Wallet**: Seamless integration with MetaMask.
+* **Rent Bike**: Pay `0.006 ETH` (Rent `0.001` + Deposit `0.005`).
+* **Smart Refund**: Automatically refunds `0.005 ETH` deposit to the user upon return.
+* **Real-time Status**: UI updates instantly based on transaction status.
+
+## 🛠 Tech Stack (技術棧)
+* **Blockchain**: Ethereum (Sepolia Testnet)
+* **Smart Contract**: Solidity
+* **Frontend**: HTML, CSS, JavaScript (Web3.js)
+* **Tools**: Remix IDE, MetaMask
+
+---
+
+## 📖 User Guide (使用教學)
+
+### Prerequisites (前置準備)
+1.  Install the [MetaMask](https://metamask.io/) browser extension.
+2.  Switch network to **Sepolia Testnet**.
+3.  Ensure you have some **Sepolia ETH** for gas fees.
+
+### Step-by-Step (操作步驟)
+
+#### 1. Connect Wallet (連接錢包)
+Open the web page. The system will detect your MetaMask wallet.
+*(Paste your screenshot here / 在這裡貼上你的截圖)*
+
+#### 2. Rent a Bike (租借單車)
+Click the **"Rent"** button. Confirm the transaction in MetaMask (Total: `0.006 ETH`).
+Wait for the blockchain confirmation... ⏳
+*(Paste your screenshot here / 在這裡貼上租借中的截圖)*
+
+#### 3. Ride & Return (騎乘與還車)
+Once confirmed, the status changes to "Riding".
+Click **"Return Bike"** when finished.
+
+#### 4. Get Refund (取回押金)
+Confirm the return transaction.
+🎉 **Success!** You will receive `0.005 ETH` back in your wallet instantly.
+*(Paste your screenshot here / 在這裡貼上成功還車的截圖)*
+
+---
+
+## 📄 License
+This project is licensed under the MIT License.
